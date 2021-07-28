@@ -1,11 +1,15 @@
 from collections import OrderedDict
-from typing import Any, List, OrderedDict as Type_OrderedDict
+from typing import Any, Dict, List, OrderedDict as Type_OrderedDict
 from functools import reduce
+from copy import deepcopy as _deepcopy
 
 try:
     import xmltodict
 except:
-    raise ImportError('Unable to import xmltodict, please pip install xmltodict.')
+    raise ImportError('Unable to import xmltodict, please `pip install xmltodict==0.12.0`.')
+else:
+    if xmltodict.__version__ != '0.12.0':
+        raise ImportError("xmltodict's version must be `0.12.0`.")
 
 ''' 2021-07-23 ~ '''
 __author__ = 'jiyang'
@@ -67,88 +71,221 @@ class ChainXML:
         self.cdata_key = cdata_key
         self.real_cdata_key = real_cdata_key
 
-        self._attr_searcher = {}
-        '''self._reverse_attr_name
-            {
-                ("name", "#name"): node,
-                ...
-            }
-        '''
-        self._reverse_attr_name = {}
         '''self._attr_searcher:
 
             {
-                'name="ok"': {
+                'name=ok': {
                     'count': 0,
                     'nodes': [
-
+                        id(node),
+                        ...
                     ]
                 }
             }
         '''
+        self._attr_searcher = {}
+
+        '''self._reverse_attr_name
+            {
+                ("name", "#name"): [
+                    id(node),
+                    ...
+                ],
+                ...
+            }
+        '''
+        self._reverse_attr_name = {}
+
+        '''self._reverse_text_node
+            [
+                id(node),
+                ...
+            ]
+        '''
         self._reverse_text_node = []
+
+        '''self._id_nodes
+            {
+                id(node): node, # node: ChainDict
+                ...
+            }
+        '''
+        self._id_nodes = {}
+
+        '''self._id_tags
+            {
+                id(node): Tag, # Tag: str
+                ...
+            }
+        '''
+        self._id_tags = {}
+
+        '''self._tag_ids
+            {
+                Tag: [
+                    id(node),
+                    ...
+                ], # Tag: str
+                ...
+            }
+        '''
+        self._tag_ids = {}
+
+        '''self._text_ids
+            {
+                Text: [
+                    id(node),
+                    ...
+                ], # Text: str
+                ...
+            }
+        '''
+        self._text_ids = {}
+        
+        '''self._contrast_ids
+            {
+                id(sub_node): id(parent_node),
+                ...
+            }
+        '''
+        self._contrast_ids = {}
+
         self.xml = self._build_chain_by_recursion(self.doc)
 
     
-    def _build_chain_by_BFS(self, doc_obj: Type_OrderedDict) -> dict:
+    def _build_chain_by_BFS(self, doc_obj: Type_OrderedDict) -> ChainDict:
         '''generate chained struct by BFS. (future)
         '''
 
-    def _build_chain_by_DFS(self, doc_obj: Type_OrderedDict) -> dict:
+    def _build_chain_by_DFS(self, doc_obj: Type_OrderedDict) -> ChainDict:
         '''generate chained struct by DFS. (future)
         '''
 
-    def _build_chain_by_recursion(self, doc_obj: Any) -> dict:
+    def registry_ids(self, sub_node: Any, node: ChainDict) -> None:
+        self._contrast_ids[id(sub_node)] = id(node)
+
+    def _build_chain_by_recursion(self, doc_obj: Any) -> ChainDict:
         '''generate chained struct by recursion.
         '''
-        if not isinstance(doc_obj, dict):
+        if not isinstance(doc_obj, dict): # dict used to filter original data, not ChainDict.
             if isinstance(doc_obj, (list, tuple, )): # safely change to BFS. (future)
                 temp_list = []
                 for line in doc_obj:
-                    temp_list.append(self._build_chain_by_recursion(line))
+                    each = self._build_chain_by_recursion(line)
+                    if not isinstance(each, str):
+                        self.registry_ids(each, temp_list)
+                        temp_list.append(each)
+
+                        # record node-text and it's id(node).
+                        if isinstance(each, ChainDict) and self.real_cdata_key in each:
+                            if each[self.real_cdata_key] in self._text_ids:
+                                self._text_ids[each[self.real_cdata_key]].append(id(each))
+                            else:
+                                self._text_ids[each[self.real_cdata_key]] = [id(each), ]
+                    else:
+                        temp_node = ChainDict()
+                        temp_node[self.real_cdata_key] = each
+                        temp_list.append(temp_node)
+
+                        self._reverse_text_node.append(id(temp_node))
+                        self._id_nodes[id(temp_node)] = temp_node
+                        self.registry_ids(temp_node, temp_list)
+
+                        # record node-text and it's id(node).
+                        if each in self._text_ids:
+                            self._text_ids[each].append(id(temp_node))
+                        else:
+                            self._text_ids[each] = [id(temp_node), ]
                 return temp_list
             if doc_obj is None:
-                return ChainDict() # None is not allowed
+                t_node = ChainDict()
+                self._id_nodes[id(t_node)] = t_node # record {id(node): node}
+                return t_node # None is not allowed, must be an ChainDict object, 
             return doc_obj
 
         temp_xml = ChainDict()
+        self._id_nodes[id(temp_xml)] = temp_xml # record {id(node): node}
         
         for k, v in doc_obj.items():
             _attr_name_new_old = None
-            _text_ = False
+            _text_ = False # flag, node has text content
             if self.attr_prefix == k[0]: # attribute
                 _attr_name_new_old = (k[1:], k)
                 k = k[1:]
             if self.cdata_key == k: # text
                 k = self.real_cdata_key
                 _text_ = True
-            temp_xml[k] = self._build_chain_by_recursion(v)
-
-            if _attr_name_new_old is not None:
-                if _attr_name_new_old not in self._reverse_attr_name:
-                    self._reverse_attr_name[_attr_name_new_old] = [temp_xml] # deal with attr specially(due to save).
-                else:
-                    self._reverse_attr_name[_attr_name_new_old].append(temp_xml)
-
-            if _text_:
-                self._reverse_text_node.append(temp_xml)
             
-            if isinstance(temp_xml[k], str):
-                # if self.real_cdata_key not in temp_xml:
-                #     t_d = ChainDict()
-                #     t_d[self.real_cdata_key] = temp_xml[k]
-                #     temp_xml[k] = t_d
+            temp_node_content = self._build_chain_by_recursion(v)
+
+            if not (_attr_name_new_old is not None or _text_) and isinstance(temp_node_content, str):
+                temp_node = ChainDict()
+                temp_node[self.real_cdata_key] = temp_node_content
+                temp_xml[k] = temp_node
+
+                self._reverse_text_node.append(id(temp_node))
+                self._id_nodes[id(temp_node)] = temp_node
+                self._id_tags[id(temp_node)] = k
+                if k in self._tag_ids:
+                    self._tag_ids[k].append(id(temp_xml[k]))
+                else:
+                    self._tag_ids[k] = [id(temp_xml[k]), ]
+                self.registry_ids(temp_node, temp_xml)
+
+                # record node-text and it's id(node).
+                if temp_node_content in self._text_ids:
+                    self._text_ids[temp_node_content].append(id(temp_node))
+                else:
+                    self._text_ids[temp_node_content] = [id(temp_node), ]
+            else:
+                temp_xml[k] = temp_node_content
+
+            if _attr_name_new_old is not None: # record attribute.
+                if _attr_name_new_old not in self._reverse_attr_name:
+                    self._reverse_attr_name[_attr_name_new_old] = [id(temp_xml), ] # deal with attr specially(due to save).
+                else:
+                    self._reverse_attr_name[_attr_name_new_old].append(id(temp_xml))
 
                 search_key = f'{k}={temp_xml[k]}'
                 if search_key in self._attr_searcher:
-                    self._attr_searcher[search_key]['nodes'].append(temp_xml)
+                    self._attr_searcher[search_key]['nodes'].append(id(temp_xml))
                     self._attr_searcher[search_key]['count'] += 1
                 else:
                     self._attr_searcher[search_key] = {
                         'count': 1,
-                        'nodes': [temp_xml, ]
+                        'nodes': [id(temp_xml), ]
                     }
 
+            if _text_: # record text node.
+                self._reverse_text_node.append(id(temp_xml))
+                continue
+
+            if not isinstance(temp_xml[k], str): # record ChainDict or list.
+                # ChainDict or list（problem: if node is `list` type, it's id(temp_xml[k]) is different from self._attr_searcher.）
+                self._id_nodes[id(temp_xml[k])] = temp_xml[k] # record {id(node): node}
+                self.registry_ids(temp_xml[k], temp_xml) # due to fast index（contain all）
+
+                # if isinstance(temp_xml[k], ChainDict):
+                #     self._id_tags[id(temp_xml[k])] = k # record tag, to execute delete operate. [only one]
+                self._id_tags[id(temp_xml[k])] = k
+                if k in self._tag_ids:
+                    self._tag_ids[k].append(id(temp_xml[k]))
+                else:
+                    self._tag_ids[k] = [id(temp_xml[k]), ]
+
+                # record node-text and it's id(node).
+                if isinstance(temp_xml[k], ChainDict) and self.real_cdata_key in temp_xml[k]:
+                    if temp_xml[k][self.real_cdata_key] in self._text_ids:
+                        self._text_ids[temp_xml[k][self.real_cdata_key]].append(id(temp_xml[k]))
+                    else:
+                        self._text_ids[temp_xml[k][self.real_cdata_key]] = [id(temp_xml[k]), ]
+            # else:
+            #     # record node-text and it's id(node).
+            #     if temp_xml[k] in self._text_ids:
+            #         self._text_ids[temp_xml[k]].append(id(temp_xml))
+            #     else:
+            #         self._text_ids[temp_xml[k]] = [id(temp_xml), ]
+                    
         return temp_xml
 
 class ChainManager:
@@ -166,6 +303,8 @@ class ChainManager:
             , real_cdata_key = self.real_cdata_key
         )
         self.xml = self.chainXML.xml
+
+        # belong to attribute, used to search quickly.
         self._attr_searcher = self.chainXML._attr_searcher
         self._searcher_keys = list(self._attr_searcher.keys())
 
@@ -173,11 +312,13 @@ class ChainManager:
         self._reverse_attr_name = self.chainXML._reverse_attr_name
         self._reverse_text_node = self.chainXML._reverse_text_node
 
-    @classmethod
-    def new_node(self):
-        return ChainDict()
+        self._id_nodes = self.chainXML._id_nodes
+        self._id_tags = self.chainXML._id_tags
+        self._tag_ids = self.chainXML._tag_ids
+        self._text_ids = self.chainXML._text_ids
+        self._contrast_ids = self.chainXML._contrast_ids
 
-    def _intersection(self, obj1, obj2):
+    def __intersection(self, obj1, obj2):
         result = []
         for _1 in obj1:
             for _2 in obj2:
@@ -185,6 +326,10 @@ class ChainManager:
                     result.append(_1)
                     break
         return result
+
+    def __find_intersection(self, datas: List[List[int]]) -> List[int]:
+        
+        return list(reduce(self.__intersection, datas))
     
     def find_node_by_attrs(self, *args, **kwargs) -> ChainDict:
 
@@ -205,13 +350,13 @@ class ChainManager:
             if obj['count'] > 1:
                 raise MoreNodesFound('Match to more than one result.')
             else:
-                return obj['nodes'][0]
+                return self._id_nodes[obj['nodes'][0]]
         else:
-            objs = list(reduce(self._intersection, [self._attr_searcher[t]['nodes'] for t in match_cons]))
+            objs = self.__find_intersection([self._attr_searcher[t]['nodes'] for t in match_cons])
             if 0 == len(objs):
                 raise NotNodeFound('Not found.')
             elif 1 == len(objs):
-                return objs[0]
+                return self._id_nodes[objs[0]]
             else:
                 raise MoreNodesFound('Match to more than one result.')
 
@@ -232,28 +377,28 @@ class ChainManager:
         elif 1 == len_match_cons:
             obj = self._attr_searcher[match_cons[0]]
             if obj['count'] > 1:
-                return obj['nodes']
+                return [self._id_nodes[_t] for _t in obj['nodes']]
             else:
-                return obj['nodes'][0]
+                return self._id_nodes[obj['nodes'][0]]
         else:
-            objs = list(reduce(self._intersection, [self._attr_searcher[t]['nodes'] for t in match_cons]))
+            objs = self.__find_intersection([self._attr_searcher[t]['nodes'] for t in match_cons])
             if 0 == len(objs):
                 raise NotNodeFound('Not found.')
             elif 1 == len(objs):
-                return objs[0]
+                return self._id_nodes[objs[0]]
             else:
-                return objs
+                return [self._id_nodes[_t] for _t in objs]
 
-
-    def find_nodes_by_indexs(self, indexs: List[int], *args, **kwargs) -> ChainDict:
+    def find_nodes_by_indexs(self, indexs: List[int], *args, **kwargs) -> List[ChainDict]:
         nodes = self.find_nodes_by_attrs(*args, **kwargs)
         len_nodes = len(nodes)
+        return_nodes = []
         for index in indexs:
             if 0 <= index < len_nodes:
-                yield nodes[index]
+                return_nodes.append(nodes[index])
+        return return_nodes
 
-
-    def find_text(self, node):
+    def find_text(self, node) -> str:
         
         if self.real_cdata_key in node:
             return node[self.real_cdata_key]
@@ -262,10 +407,43 @@ class ChainManager:
         else:
             raise TextNotFound('Text not found.')
 
+    def find_nodes_by_tag(self, tag: str) -> List[ChainDict]:
+        return [self._id_nodes[_id] for _id in self._tag_ids[tag]]
+    
+    def find_nodes_by_tag_and_attrs(self, tag: str, *args, **kwargs) -> List[ChainDict]:
 
-    def find_node_by_tag(self):
-        '''(future)
-        '''
+        if tag not in self._tag_ids:
+            raise NotNodeFound('Not found.')
+
+        conditions = set([f'{k}={v}' for k, v in kwargs.items()])
+        match_cons = []
+        for sk in self._searcher_keys:
+            if sk in conditions:
+                match_cons.append(sk)
+
+        len_match_cons = len(match_cons)
+        if 0 == len_match_cons:
+            raise NotNodeFound('Not found.')
+        else:
+            tag_ids = []
+            for _i in self._tag_ids[tag]: # if node type is list, must dig up all sub_node_ids.
+                if isinstance(self._id_nodes[_i], list):
+                    for k, v in self._contrast_ids.items():
+                        if v == _i:
+                            tag_ids.append(k) # get subnode id.
+                else:
+                    tag_ids.append(_i)
+
+            tag_ids = list(set(tag_ids)) # id maybe repeat. be faster.
+
+            objs = self.__find_intersection([self._attr_searcher[t]['nodes'] for t in match_cons] + [tag_ids])
+            if 0 == len(objs):
+                raise NotNodeFound('Not found.')
+            elif 1 == len(objs):
+                return self._id_nodes[objs[0]]
+            else:
+                return [self._id_nodes[_t] for _t in objs]
+
 
     def find_text_by_attrs(self, *args, text_type: int=TextType.STR, **kwargs) -> str:
         node = self.find_node_by_attrs(*args, **kwargs)
@@ -278,6 +456,18 @@ class ChainManager:
             return int(text)
         else:
             return text
+
+    def find_nodes(self
+            , attr_limits: Dict[str, str] = None
+            , text_limits: List[str] = None
+            , tag: str = None
+            , *args
+            , **kwargs
+        ):
+        ...
+
+    def registry_ids(self, sub_node: Any, node: ChainDict):
+        self._contrast_ids[id(sub_node)] = id(node)
         
     def insert(self, obj, tag, attrs={}, text=''):
         if isinstance(obj, ChainDict):
@@ -287,30 +477,100 @@ class ChainManager:
             insert_node = ChainDict()
             insert_node[tag] = new_node
             obj.update(insert_node)
+
+            self._id_nodes[id(new_node)] = new_node
+            self._id_nodes[id(insert_node)] = insert_node
+
+            self._id_tags[id(insert_node)] = tag
+            if tag in self._tag_ids:
+                self._tag_ids[tag].append(id(insert_node))
+            else:
+                self._tag_ids[tag] = [id(insert_node), ]
+
+            self.registry_ids(insert_node, obj)
+            self.registry_ids(new_node, insert_node)
         else:
             raise AddNodeError('Add node error, obj must be `ChainDict` type.')
 
-    def delete(self, obj: ChainDict) -> ChainDict:
-        '''(future)
-        '''
-        return obj
+    # def _unbound_attrname(self, node: ChainDict):
+    #     self._reverse_attr_name.values()
 
-    def _register_attr(self, node, attr_name):
+    # def _unbound_searcher(self, node: ChainDict):
+    #     self._attr_searcher = self.chainXML._attr_searcher
+    #     self._searcher_keys = list(self._attr_searcher.keys())
+
+    def _unbound_text(self, node: ChainDict):
+
+        while id(node) in self._reverse_text_node:
+            self._reverse_text_node.remove(id(node))
+
+    def _ids_find_parent(self, sub_id: int) -> int:
+
+        if sub_id in self._contrast_ids:
+            return self._contrast_ids[sub_id]
+        else:
+            if sub_id in self._contrast_ids.values():
+                return sub_id
+            else:
+                raise IndexError('`sub_id` is not exists.')
+
+    def pop_node_by_attrs(self, *args, **kwargs):
+        obj = self.find_node_by_attrs(*args, **kwargs)
+        return self.popitem(obj)
+
+    def pop_nodes_by_attrs(self, *args, **kwargs) -> List[ChainDict]:
+        objs = self.find_nodes_by_attrs(*args, **kwargs)
+        del_nodes = []
+        for obj in objs:
+            del_nodes.append(self.popitem(obj))
+        return del_nodes
+
+    def popitem(self, obj: ChainDict) -> ChainDict:
+
+        parent_id = self._ids_find_parent(id(obj))
+        parent_obj = self._id_nodes[parent_id]
+
+        if isinstance(parent_obj, ChainDict):
+            # self._unbound_attrname(obj) # so hard.
+            # self._unbound_searcher(obj)
+
+            this_tag = self._id_tags[id(obj)] # key faster.
+            self._unbound_text(obj)
+            return parent_obj.pop(this_tag)
+
+        elif isinstance(parent_obj, list):
+            self._unbound_text(obj)
+            bak = _deepcopy(obj)
+            parent_obj.remove(obj)
+            return bak
+            
+        else:
+            raise AddNodeError("Add node error, obj must be `ChainDict` type, and obj's parent node-type must be `ChainDict` or `list`.")
+
+    def register_attr(self, node, attr_name, value):
         temp_key = (attr_name, f'{self.attr_prefix}{attr_name}')
         if temp_key in self._reverse_attr_name:
-            if node not in self._reverse_attr_name[temp_key]:
-                self._reverse_attr_name[temp_key].append(node)
+            if id(node) not in self._reverse_attr_name[temp_key]:
+                self._reverse_attr_name[temp_key].append(id(node))
         else:
-            self._reverse_attr_name[temp_key] = [node]
+            self._reverse_attr_name[temp_key] = [id(node), ]
+
+        # update self._attr_searcher
+        key = f'{attr_name}={value}'
+        if key in self._attr_searcher:
+            self._attr_searcher[key].append(id(node))
+        else:
+            self._attr_searcher[key] = [id(node), ]
+        self._searcher_keys = list(self._attr_searcher.keys()) # synchronize
 
     def _register_text(self, node):
-        self._reverse_text_node.append(node)
+        self._reverse_text_node.append(id(node))
 
     def add_attrs(self, node, *args, **kwargs):
         for attr_name, value in args+tuple(kwargs.items()):
             if attr_name not in node:
                 node[attr_name] = value
-                self._register_attr(node, attr_name)
+                self.register_attr(node, attr_name, value)
 
     def update_attr(self, obj: ChainDict, attr_name: str, new_value: Any):
         if obj is None:
@@ -326,7 +586,6 @@ class ChainManager:
         for attr_name, value in args+tuple(kwargs.items()):
             self.update_attr(obj, attr_name, value)
         
-
     def update_text(self, obj: ChainDict, new_text: Any, first=False):
         if obj is not None and self.real_cdata_key in obj:
             obj[self.real_cdata_key] = new_text
@@ -339,34 +598,62 @@ class ChainManager:
             else:
                 raise UpdateError('Unable to update this node, check whether text exists.')
 
-    def __reverse_data(self):
+    def __revert_data(self, forward=True):
         for no, objs in self._reverse_attr_name.items():
             new_name, old_name = no
             for obj in objs:
-                obj[old_name] = obj[new_name]
-                del obj[new_name]
+                obj = self._id_nodes[obj]
+                if forward:
+                    obj[new_name] = obj[old_name]
+                    del obj[old_name]
+                else:
+                    obj[old_name] = obj[new_name]
+                    del obj[new_name]
 
         for node in self._reverse_text_node:
-            node[self.cdata_key] = node[self.real_cdata_key]
-            del node[self.real_cdata_key]
-
-    def __revert_data(self):
-        for no, objs in self._reverse_attr_name.items():
-            new_name, old_name = no
-            for obj in objs:
-                obj[new_name] = obj[old_name]
-                del obj[old_name]
-
-        for node in self._reverse_text_node:
-            node[self.real_cdata_key] = node[self.cdata_key]
-            del node[self.cdata_key]
-
+            node = self._id_nodes[node]
+            if forward:
+                node[self.real_cdata_key] = node[self.cdata_key]
+                del node[self.cdata_key]
+            else:
+                node[self.cdata_key] = node[self.real_cdata_key]
+                del node[self.real_cdata_key]
 
     def save(self, path: str = 'output.xml') -> None:
-        self.__reverse_data()
+        self.__revert_data(forward=False)
         with open(path, 'w', encoding='utf-8') as fp:
             xmltodict.unparse(self.xml, fp)
         self.__revert_data()
+
+def parse_string(
+        xml_data: str
+        , attr_prefix: str = ATTR_PREFIX
+        , cdata_key: str = CDATA_KEY
+        , real_cdata_key: str = REAL_CDATA_KEY
+    ):
+    return ChainManager(
+        xml_data
+        , attr_prefix = attr_prefix
+        , cdata_key = cdata_key
+        , real_cdata_key = real_cdata_key
+    )
+
+def parse(
+        path: str
+        , attr_prefix: str = ATTR_PREFIX
+        , cdata_key: str = CDATA_KEY
+        , real_cdata_key: str = REAL_CDATA_KEY
+        , encoding: str = 'utf-8'
+    ):
+    with open(path, 'r', encoding=encoding) as fp:
+        xml_data = fp.read()
+
+    return parse_string(
+        xml_data
+        , attr_prefix = attr_prefix
+        , cdata_key = cdata_key
+        , real_cdata_key = real_cdata_key
+    )
 
 if __name__ == '__main__':
     ...
