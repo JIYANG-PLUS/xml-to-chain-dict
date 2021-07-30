@@ -274,11 +274,14 @@ class ChainXML:
                     self._tag_ids[k] = [id(temp_xml[k]), ]
 
                 # record node-text and it's id(node).
-                if isinstance(temp_xml[k], ChainDict) and self.real_cdata_key in temp_xml[k]:
-                    if temp_xml[k][self.real_cdata_key] in self._text_ids:
-                        self._text_ids[temp_xml[k][self.real_cdata_key]].append(id(temp_xml[k]))
+                if isinstance(temp_xml[k], ChainDict):
+                    if self.real_cdata_key in temp_xml[k]:
+                        if temp_xml[k][self.real_cdata_key] in self._text_ids:
+                            self._text_ids[temp_xml[k][self.real_cdata_key]].append(id(temp_xml[k]))
+                        else:
+                            self._text_ids[temp_xml[k][self.real_cdata_key]] = [id(temp_xml[k]), ]
                     else:
-                        self._text_ids[temp_xml[k][self.real_cdata_key]] = [id(temp_xml[k]), ]
+                        temp_xml[k][self.real_cdata_key] = '' # must have #text attr.
             # else:
             #     # record node-text and it's id(node).
             #     if temp_xml[k] in self._text_ids:
@@ -342,6 +345,9 @@ class ChainManager:
             if sk in conditions:
                 match_cons.append(sk)
 
+        if len(match_cons) != len(conditions):
+            raise NotNodeFound('Not found.')
+
         len_match_cons = len(match_cons)
         if 0 == len_match_cons:
             raise NotNodeFound('Not found.')
@@ -371,21 +377,24 @@ class ChainManager:
             if sk in conditions:
                 match_cons.append(sk)
 
+        if len(match_cons) != len(conditions):
+            return []
+
         len_match_cons = len(match_cons)
         if 0 == len_match_cons:
-            raise NotNodeFound('Not found.')
+            return []
         elif 1 == len_match_cons:
             obj = self._attr_searcher[match_cons[0]]
             if obj['count'] > 1:
                 return [self._id_nodes[_t] for _t in obj['nodes']]
             else:
-                return self._id_nodes[obj['nodes'][0]]
+                return [self._id_nodes[obj['nodes'][0]], ]
         else:
             objs = self.__find_intersection([self._attr_searcher[t]['nodes'] for t in match_cons])
             if 0 == len(objs):
-                raise NotNodeFound('Not found.')
+                return []
             elif 1 == len(objs):
-                return self._id_nodes[objs[0]]
+                return [self._id_nodes[objs[0]], ]
             else:
                 return [self._id_nodes[_t] for _t in objs]
 
@@ -398,7 +407,10 @@ class ChainManager:
                 return_nodes.append(nodes[index])
         return return_nodes
 
-    def find_text(self, node) -> str:
+    def find_text(self, node: ChainDict) -> str:
+
+        if not isinstance(node, ChainDict):
+            raise TextNotFound('Text not found.')
         
         if self.real_cdata_key in node:
             return node[self.real_cdata_key]
@@ -421,9 +433,13 @@ class ChainManager:
             if sk in conditions:
                 match_cons.append(sk)
 
+        if len(match_cons) != len(conditions):
+            if 0 != len(conditions):
+                return []
+                
         len_match_cons = len(match_cons)
-        if 0 == len_match_cons:
-            raise NotNodeFound('Not found.')
+        if 0 == len_match_cons and 0 != len(conditions):
+            return []
         else:
             tag_ids = []
             for _i in self._tag_ids[tag]: # if node type is list, must dig up all sub_node_ids.
@@ -438,9 +454,9 @@ class ChainManager:
 
             objs = self.__find_intersection([self._attr_searcher[t]['nodes'] for t in match_cons] + [tag_ids])
             if 0 == len(objs):
-                raise NotNodeFound('Not found.')
+                return []
             elif 1 == len(objs):
-                return self._id_nodes[objs[0]]
+                return [self._id_nodes[objs[0]], ]
             else:
                 return [self._id_nodes[_t] for _t in objs]
 
@@ -473,7 +489,7 @@ class ChainManager:
         if isinstance(obj, ChainDict):
             new_node = ChainDict()
             self.add_attrs(new_node, **attrs)
-            self.update_text(new_node, text, first=True)
+            self.update_text(new_node, text)
             insert_node = ChainDict()
             insert_node[tag] = new_node
             obj.update(insert_node)
@@ -586,17 +602,14 @@ class ChainManager:
         for attr_name, value in args+tuple(kwargs.items()):
             self.update_attr(obj, attr_name, value)
         
-    def update_text(self, obj: ChainDict, new_text: Any, first=False):
+    def update_text(self, obj: ChainDict, new_text: Any):
         if obj is not None and self.real_cdata_key in obj:
             obj[self.real_cdata_key] = new_text
         else:
             if obj is None:
                 raise UpdateError('Unable to update this node, None is found.')
-            if first:
-                obj[self.real_cdata_key] = new_text
-                self._register_text(obj)
-            else:
-                raise UpdateError('Unable to update this node, check whether text exists.')
+            obj[self.real_cdata_key] = new_text
+            self._register_text(obj)
 
     def __revert_data(self, forward=True):
         for no, objs in self._reverse_attr_name.items():
@@ -619,9 +632,9 @@ class ChainManager:
                 node[self.cdata_key] = node[self.real_cdata_key]
                 del node[self.real_cdata_key]
 
-    def save(self, path: str = 'output.xml') -> None:
+    def save(self, path: str = 'output.xml', encoding='utf-8') -> None:
         self.__revert_data(forward=False)
-        with open(path, 'w', encoding='utf-8') as fp:
+        with open(path, 'w', encoding=encoding) as fp:
             xmltodict.unparse(self.xml, fp)
         self.__revert_data()
 

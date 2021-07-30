@@ -1,2 +1,1 @@
-# xml-to-chain-dict
-An effective, powerful, fast and simple XML Python parsing tool.
+教程链接（tutorial）：http://101.34.219.31:8001/

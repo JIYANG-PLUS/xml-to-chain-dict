@@ -56,8 +56,8 @@ xmlManager.add_attrs(root['a'], ('age', 14)) # 重复添加，仅第一个有效
 node_a = xmlManager.find_node_by_attrs(name="name_a")
 xmlManager.update_attr(node_a, 'age', 45)
 xmlManager.batch_update_attrs(node_a, ('age', 100), age=123) # 接收位置参数和关键字参数，重复时后者覆盖前者
-xmlManager.update_text(node_a, 'I am A2.', first=False) # 默认存在，若是新增节点请使用 first = True
-xmlManager.update_text(root.b.c[4].e, 'I am e.', first=True)
+xmlManager.update_text(node_a, 'I am A2.') # 默认存在，若是新增节点请使用 first = True
+xmlManager.update_text(root.b.c[4].e, 'I am e.')
 print(node_a) # ChainDict([('name', 'name_a'), ('text_', 'I am A2.'), ('age', 123)])
 
 

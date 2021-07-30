@@ -1,13 +1,17 @@
+from typing import List
 import xmltocd
+from xmltocd import ChainManager
+
 xml_data = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
+   <x></x>
    <Document>
       <Folder>
-         <name>One Line Diagram</name>
+         <name id="out" name="dsad">One Line Diagram</name>
          <open>0</open>
          <Folder>
-            <name>SectionOne</name>
+            <name id="one">SectionOne</name>
             <open>0</open>
             <Folder>
                <name>Node</name>
@@ -47,8 +51,12 @@ xml_data = """\
    </Document>
 </kml>
 """
-xmlManager = xmltocd.parse_string(xml_data)
 
-# print(xmlManager.find_nodes_by_tag('coordinates')[-1].text_)
-print(xmlManager.find_nodes_by_tag('LinearRing')[-1].coordinates.text_)
-# -83.6512679,67.0216805 -83.6513317,67.0216531 -83.6513222,67.0215747 -83.6512522,67.0215498 -83.5967049,67.0225434 -83.5966412,67.0225708 -83.5966505,67.0226492 -83.5967204,67.0226741 -83.6512679,67.0216805
+xmlManager: ChainManager = xmltocd.parse_string(xml_data)
+
+# 方式一
+node = xmlManager.find_node_by_attrs(id='out')
+del_node = xmlManager.popitem(node)
+
+del_node = xmlManager.pop_node_by_attrs(id='out')
+del_nodes = xmlManager.pop_nodes_by_attrs(id='out')
