@@ -94,13 +94,13 @@ class ChainManager:
                 if isinstance(_1, ChainDict):
                     nodes.append(_1)
                 elif isinstance(_1, list):
-                    nodes.extend(_1)
+                    ...
         return nodes
     
     @limit_one
-    def find_nodes_by_tag_and_attrs(self, tag: str=None, one_=False, **kwargs) -> Union[List[ChainDict], ChainDict]:
+    def find_nodes_by_tag_and_attrs(self, tag_: str=None, one_=False, **kwargs) -> Union[List[ChainDict], ChainDict]:
 
-        if tag is not None and tag not in self._tag_ids:
+        if tag_ is not None and tag_ not in self._tag_ids:
             return []
 
         conditions = set([f'{k}={v}' for k, v in kwargs.items()])
@@ -117,8 +117,8 @@ class ChainManager:
         if 0 == len_match_cons and 0 != len(conditions):
             return []
         else:
-            if tag is not None:
-                tag_ids = [id(_1) for _1 in self.find_nodes_by_tag(tag)]
+            if tag_ is not None:
+                tag_ids = [id(_1) for _1 in self.find_nodes_by_tag(tag_)]
                 objs = find_intersection([tag_ids] + [self._attr_searcher[t]['nodes'] for t in match_cons])
             else:
                 objs = find_intersection([self._attr_searcher[t]['nodes'] for t in match_cons])
@@ -131,15 +131,15 @@ class ChainManager:
                 return [self._id_nodes[_t] for _t in objs]
 
     @limit_one
-    def find_nodes_by_tag_text_attrs(self, tag: str=None, text: str=None, one_=False, **kwargs) -> Union[List[ChainDict], ChainDict]:
+    def find_nodes_by_tag_text_attrs(self, tag_: str=None, text_: str=None, one_=False, **kwargs) -> Union[List[ChainDict], ChainDict]:
         tag_ids = None
         text_ids = None
         attr_ids = None
 
-        if tag is not None:
-            tag_ids = [id(_1) for _1 in self.find_nodes_by_tag(tag)]
-        if text is not None:
-            text_ids = [id(_1) for _1 in self.find_nodes_by_text(text)]
+        if tag_ is not None:
+            tag_ids = [id(_1) for _1 in self.find_nodes_by_tag(tag_)]
+        if text_ is not None:
+            text_ids = [id(_1) for _1 in self.find_nodes_by_text(text_)]
         if len(kwargs) > 0:
             attr_ids = [id(_1) for _1 in self.find_nodes_by_attrs(**kwargs)]
 
@@ -208,8 +208,8 @@ class ChainManager:
     def find_nodes_with_sibling_ancestor(self
             , unique_node: Optional[ChainDict] = None
             , *args
-            , tag: str = None
-            , text: str = None
+            , tag_: str = None
+            , text_: str = None
             , one_=False
             , find_func: Optional[Callable] = None # default: find_nodes_by_tag_text_attrs
             , constraint: Optional[Dict[str, Any]] = None # {'args': [], 'kwargs': {}}
@@ -218,7 +218,7 @@ class ChainManager:
 
         unique_node_id = self.__find_constraint_node(unique_node, find_func, constraint)
 
-        t_node_ids = [id(_1) for _1 in self.find_nodes_by_tag_text_attrs(tag=tag, text=text, *args, **kwargs)]
+        t_node_ids = [id(_1) for _1 in self.find_nodes_by_tag_text_attrs(tag_=tag_, text_=text_, *args, **kwargs)]
         if len(t_node_ids) <= 0:
             return []
 
@@ -234,8 +234,8 @@ class ChainManager:
     def find_nodes_with_ancestor(self
             , unique_node: Optional[ChainDict] = None
             , *args
-            , tag: str = None
-            , text: str = None
+            , tag_: str = None
+            , text_: str = None
             , one_=False
             , find_func: Optional[Callable] = None # default: find_nodes_by_tag_text_attrs
             , constraint: Optional[Dict[str, Any]] = None # {'args': [], 'kwargs': {}}
@@ -244,7 +244,7 @@ class ChainManager:
 
         unique_node_id = self.__find_constraint_node(unique_node, find_func, constraint)
 
-        t_node_ids = [id(_1) for _1 in self.find_nodes_by_tag_text_attrs(tag=tag, text=text, *args, **kwargs)]
+        t_node_ids = [id(_1) for _1 in self.find_nodes_by_tag_text_attrs(tag_=tag_, text_=text_, *args, **kwargs)]
         if len(t_node_ids) <= 0:
             return []
 
@@ -260,8 +260,8 @@ class ChainManager:
     def find_nodes_with_descendants(self
             , unique_node: Optional[ChainDict] = None
             , *args
-            , tag: str = None
-            , text: str = None
+            , tag_: str = None
+            , text_: str = None
             , one_=False
             , find_func: Optional[Callable] = None # default: find_nodes_by_tag_text_attrs
             , constraint: Optional[Dict[str, Any]] = None # {'args': [], 'kwargs': {}}
@@ -270,7 +270,7 @@ class ChainManager:
         
         unique_node_id = self.__find_constraint_node(unique_node, find_func, constraint)
 
-        t_node_ids = [id(_1) for _1 in self.find_nodes_by_tag_text_attrs(tag=tag, text=text, *args, **kwargs)]
+        t_node_ids = [id(_1) for _1 in self.find_nodes_by_tag_text_attrs(tag_=tag_, text_=text_, *args, **kwargs)]
         if len(t_node_ids) <= 0:
             return []
 
@@ -301,6 +301,7 @@ class ChainManager:
 
     def add_attrs(self, node, *args, **kwargs) -> None:
         for attr_name, value in args+tuple(kwargs.items()):
+            value = str(value)
             if attr_name not in node:
                 node[attr_name] = value
                 self.objects.signal_add_attr_base(node, attr_name, value)
